@@ -1,0 +1,305 @@
+/* Emergency Ambulance Driver HUD - High-Contrast Night-Mode Styles */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap');
+
+:root {
+  --bg-hud: #070B14;
+  --bg-card: rgba(15, 23, 42, 0.88);
+  --bg-card-border: rgba(51, 65, 85, 0.6);
+  --accent-emergency: #EF4444;
+  --accent-emergency-glow: rgba(239, 68, 68, 0.45);
+  --accent-cyan: #06B6D4;
+  --accent-green: #10B981;
+  --accent-amber: #F59E0B;
+  --text-main: #F8FAFC;
+  --text-muted: #94A3B8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background-color: var(--bg-hud);
+  color: var(--text-main);
+  overflow: hidden;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-mono {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Glassmorphism Panel */
+.hud-glass {
+  background: var(--bg-card);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--bg-card-border);
+}
+
+.hud-glass-solid {
+  background: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--bg-card-border);
+}
+
+/* Strobe Emergency Strobe Header Light */
+@keyframes strobeLight {
+  0%, 100% {
+    box-shadow: 0 0 25px rgba(239, 68, 68, 0.8), inset 0 0 15px rgba(239, 68, 68, 0.6);
+    border-color: #EF4444;
+  }
+  50% {
+    box-shadow: 0 0 25px rgba(6, 182, 212, 0.8), inset 0 0 15px rgba(6, 182, 212, 0.6);
+    border-color: #06B6D4;
+  }
+}
+
+.emergency-strobe {
+  animation: strobeLight 1.2s infinite ease-in-out;
+}
+
+/* Pulsing Red Emergency Button */
+@keyframes pulseEmergency {
+  0% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.8), 0 0 20px rgba(239, 68, 68, 0.6);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 0 12px rgba(239, 68, 68, 0), 0 0 35px rgba(239, 68, 68, 0.9);
+    transform: scale(1.02);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0), 0 0 20px rgba(239, 68, 68, 0.6);
+    transform: scale(1);
+  }
+}
+
+.btn-emergency-reroute {
+  animation: pulseEmergency 2s infinite ease-in-out;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-emergency-reroute:active {
+  transform: scale(0.96) !important;
+}
+
+/* Map Canvas Container */
+#map {
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
+  background: #090D16;
+}
+
+/* Leaflet Dark Customization */
+.leaflet-container {
+  background: #090D16 !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Night Mode OLED Filter for OpenStreetMap (100% Free, No API key required) */
+.map-tiles-night .leaflet-tile {
+  filter: brightness(0.62) invert(1) contrast(2.6) hue-rotate(200deg) saturate(0.35) brightness(0.72);
+}
+
+/* Natively Dark Carto Matter Tiles (Zero Filter, 100% Crisp) */
+.map-tiles-carto-dark .leaflet-tile {
+  filter: brightness(0.95) contrast(1.1);
+}
+
+.map-tiles-standard .leaflet-tile {
+  filter: none !important;
+}
+
+/* Satellite Tiles */
+.map-tiles-satellite .leaflet-tile {
+  filter: brightness(0.9) contrast(1.15);
+}
+
+.leaflet-control-zoom {
+  border: 1px solid rgba(51, 65, 85, 0.7) !important;
+  background: rgba(15, 23, 42, 0.9) !important;
+  border-radius: 8px !important;
+  overflow: hidden;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5) !important;
+}
+
+.leaflet-control-zoom a {
+  background-color: rgba(15, 23, 42, 0.9) !important;
+  color: #94A3B8 !important;
+  border-bottom: 1px solid rgba(51, 65, 85, 0.6) !important;
+}
+
+.leaflet-control-zoom a:hover {
+  background-color: #1E293B !important;
+  color: #F8FAFC !important;
+}
+
+.leaflet-control-attribution {
+  background: rgba(15, 23, 42, 0.75) !important;
+  color: #64748B !important;
+  font-size: 10px !important;
+}
+
+.leaflet-control-attribution a {
+  color: #94A3B8 !important;
+}
+
+/* Custom Marker Styles */
+.ambulance-marker-container {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+/* Animated Radar Pulse Ring around moving Ambulance */
+.radar-ring {
+  position: absolute;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: rgba(6, 182, 212, 0.2);
+  border: 2px solid #06B6D4;
+  animation: radarPulse 1.8s infinite cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.radar-ring-red {
+  position: absolute;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.25);
+  border: 2px solid #EF4444;
+  animation: radarPulse 1.4s infinite cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes radarPulse {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+
+.ambulance-icon-body {
+  width: 44px;
+  height: 44px;
+  background: #0F172A;
+  border: 2px solid #EF4444;
+  box-shadow: 0 0 15px rgba(239, 68, 68, 0.7), inset 0 0 10px rgba(239, 68, 68, 0.3);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 2;
+  transition: transform 0.3s ease-out;
+}
+
+/* Hospital Destination Pin */
+.hospital-marker-icon {
+  width: 42px;
+  height: 42px;
+  background: #0F172A;
+  border: 2px solid #10B981;
+  box-shadow: 0 0 15px rgba(16, 185, 129, 0.6);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.custom-target-marker-icon {
+  width: 42px;
+  height: 42px;
+  background: #0F172A;
+  border: 2px solid #F59E0B;
+  box-shadow: 0 0 15px rgba(245, 158, 11, 0.6);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: bouncePin 1s infinite alternate ease-in-out;
+}
+
+@keyframes bouncePin {
+  0% { transform: translateY(0); }
+  100% { transform: translateY(-8px); }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.6);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(51, 65, 85, 0.8);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.9);
+}
+
+/* Leaflet Popup Night Override */
+.leaflet-popup-content-wrapper {
+  background: rgba(15, 23, 42, 0.95) !important;
+  color: #F8FAFC !important;
+  border: 1px solid rgba(51, 65, 85, 0.8) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 15px 30px rgba(0, 0, 0, 0.7) !important;
+  backdrop-filter: blur(12px) !important;
+}
+
+.leaflet-popup-tip {
+  background: rgba(15, 23, 42, 0.95) !important;
+}
+
+/* Speedometer Glowing Dial */
+.speed-glow {
+  text-shadow: 0 0 16px rgba(6, 182, 212, 0.75);
+}
+
+.emergency-glow {
+  text-shadow: 0 0 14px rgba(239, 68, 68, 0.8);
+}
+
+/* Search Autocomplete & Results */
+.search-item {
+  transition: all 0.15s ease-in-out;
+}
+.search-item:hover, .search-item.active {
+  background-color: rgba(30, 41, 59, 0.95);
+}
+
+/* Pulsing Live GPS Ring */
+.gps-live-ring {
+  position: absolute;
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  background: rgba(16, 185, 129, 0.2);
+  border: 2px solid #10B981;
+  animation: radarPulse 2s infinite cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+

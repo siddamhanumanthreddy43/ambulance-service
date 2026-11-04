@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <title>AMBU-ROUTEX | Emergency Ambulance Smart Routing & Telemetry HUD</title>
+  
+  <!-- Tailwind CSS (Local for 0-latency instant load) -->
+  <script src="js/tailwind.js"></script>
+  
+  <!-- Leaflet CSS & JS (Local for 0-latency instant load) -->
+  <link rel="stylesheet" href="css/leaflet.css">
+  <script src="js/leaflet.js"></script>
+  
+  <!-- Custom Driver HUD Styles (Cache-Busted) -->
+  <link rel="stylesheet" href="css/style.css?v=4.9">
+  
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            hud: {
+              bg: '#070B14',
+              surface: '#0F172A',
+              border: '#1E293B',
+              emergency: '#EF4444',
+              clear: '#10B981',
+              moderate: '#F59E0B'
+            }
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="h-full w-full bg-[#070B14] text-slate-100 flex flex-col overflow-hidden select-none">
+
+  <!-- TOP EMERGENCY STATUS BAR (In-Vehicle Mount Header) -->
+  <header id="siren-strobe-indicator" class="relative z-30 flex-shrink-0 h-16 bg-[#0B1120]/95 border-b border-slate-800 px-4 sm:px-6 flex items-center justify-between shadow-2xl backdrop-blur-md">
+    <!-- Left: Unit ID & Status -->
+    <div class="flex items-center gap-3">
+      <div class="flex items-center gap-2">
+        <div class="w-3.5 h-3.5 rounded-full bg-red-500 animate-ping"></div>
+        <span class="text-xs font-black tracking-widest text-red-500 uppercase px-2 py-0.5 rounded bg-red-950/80 border border-red-800">
+          CODE 3 PRIORITY
+        </span>
+      </div>
+      <div class="hidden sm:flex flex-col">
+        <div class="flex items-center gap-2">
+          <span class="text-sm font-extrabold text-white tracking-wider flex items-center gap-1.5">
+            🚑 UNIT AMB-042
+          </span>
+          <span class="text-[11px] font-bold text-emerald-400 bg-slate-900/90 px-2 py-0.5 rounded border border-emerald-900/60 truncate max-w-[200px]" id="hud-area-name-badge">
+            📍 Detecting Live Area...
+          </span>
+        </div>
+        <div class="flex items-center gap-1.5 mt-0.5">
+          <span class="text-[10px] text-slate-400 font-mono" id="hud-coords-badge">Acquiring GPS...</span>
+          <span id="hud-gps-indicator" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold font-mono bg-slate-800 text-slate-400 border border-slate-700">
+            <span id="hud-gps-dot" class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
+            <span id="hud-gps-text">STANDBY</span>
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Center: Target Destination Info -->
+    <div class="flex items-center gap-2 max-w-xs sm:max-w-md truncate">
+      <span class="text-xs text-slate-400 hidden md:inline">TARGET:</span>
+      <span id="active-hospital-badge" class="text-xs sm:text-sm font-bold text-emerald-400 truncate bg-slate-900/90 px-3 py-1 rounded-full border border-slate-700">
+        Apollo Emergency & Trauma Center
+      </span>
+    </div>
+
+    <!-- Right: Telemetry & Siren Controls -->
+    <div class="flex items-center gap-2 sm:gap-3">
+      <!-- Live Speedometer Pill -->
+      <div class="flex items-baseline gap-1 bg-slate-900/90 border border-cyan-900/60 px-3 py-1 rounded-lg">
+        <span id="hud-speed-gauge" class="text-xl sm:text-2xl font-black font-mono text-cyan-400 speed-glow">0</span>
+        <span class="text-[10px] font-bold text-cyan-500 uppercase">KM/H</span>
+      </div>
+
+      <!-- Voice Audio Turn-by-Turn Guidance Toggle -->
+      <button id="btn-toggle-voice" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-emerald-600 text-emerald-400 hover:text-white transition flex items-center gap-1.5 text-xs font-bold border border-slate-700 shadow" title="Toggle Voice Turn-by-Turn Guidance">
+        <span id="voice-icon">🔊</span>
+        <span class="hidden sm:inline" id="voice-label">Voice On</span>
+      </button>
+
+      <!-- Siren Sound Toggle -->
+      <button id="btn-toggle-siren" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-red-600 text-slate-400 hover:text-white transition flex items-center gap-1.5 text-xs font-bold border border-slate-700" title="Toggle Emergency Dual-Tone Siren">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"></path></svg>
+        <span class="hidden sm:inline">Siren</span>
+      </button>
+
+      <!-- WebSocket Stream Indicator -->
+      <div class="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900 border border-slate-800">
+        <div id="ws-status-indicator" class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+        <span id="ws-status-badge" class="text-[10px] font-mono text-slate-300">ONLINE</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN VIEWPORT (Map + Driver HUD Overlay) -->
+  <main class="relative flex-grow w-full h-[calc(100vh-4rem)]">
+    <!-- LEAFLET MAP CANVAS -->
+    <div id="map"></div>
+
+    <!-- FLOATING SEARCH BAR & DESTINATION FINDER -->
+    <div id="search-container" class="absolute top-4 right-4 sm:right-6 z-30 w-80 sm:w-96 flex flex-col pointer-events-auto">
+      <div class="hud-glass rounded-2xl p-2 shadow-2xl border border-slate-700/80 flex items-center gap-2">
+        <div class="pl-2 text-slate-400 flex items-center justify-center">
+          <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+          </svg>
+        </div>
+        <input 
+          id="search-input" 
+          type="text" 
+          placeholder="Search hospital, address, or place..." 
+          class="flex-grow bg-transparent text-xs sm:text-sm text-white placeholder-slate-400 py-1 px-1 focus:outline-none font-medium"
+          autocomplete="off"
+        />
+        <!-- Loading spinner in search -->
+        <div id="search-spinner" class="hidden pr-1">
+          <div class="w-4 h-4 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin"></div>
+        </div>
+        <!-- Clear button -->
+        <button id="search-clear-btn" class="hidden text-slate-400 hover:text-white p-1 rounded-lg transition" title="Clear Search">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </button>
+        <!-- My Location Trigger Button -->
+        <button id="btn-search-my-location" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-emerald-600 text-slate-300 hover:text-white transition flex items-center gap-1.5 text-xs font-bold border border-slate-700 shadow" title="Center on My Live Location">
+          <svg class="w-3.5 h-3.5 text-emerald-400 hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+          </svg>
+          <span class="hidden md:inline">Live GPS</span>
+        </button>
+      </div>
+
+      <!-- Search Autocomplete Results Dropdown -->
+      <div id="search-results-dropdown" class="hidden mt-1.5 hud-glass rounded-2xl shadow-2xl border border-slate-700/80 overflow-hidden max-h-80 overflow-y-auto divide-y divide-slate-800/80">
+        <!-- Injected via JS -->
+      </div>
+    </div>
+
+    <!-- REROUTE ALERT BANNER (Flashes on Roadblock/Incident) -->
+    <div id="reroute-alert-banner" class="hidden absolute top-4 left-1/2 -translate-x-1/2 z-20 w-11/12 max-w-lg bg-red-950/95 border-2 border-red-500 text-white p-3 rounded-2xl shadow-2xl backdrop-blur-lg flex items-center gap-3">
+      <div class="w-10 h-10 rounded-full bg-red-600 flex items-center justify-center flex-shrink-0 animate-ping">
+        <span class="font-black text-lg">🚨</span>
+      </div>
+      <div class="flex-grow min-w-0">
+        <p class="text-xs font-black tracking-wide text-red-300 uppercase">Emergency Reroute Applied</p>
+        <p id="reroute-reason-text" class="text-sm font-bold text-white truncate">Severe Chokepoint Ahead</p>
+        <p id="reroute-saved-text" class="text-xs text-emerald-400 font-mono">Bypass saves 3.5 mins</p>
+      </div>
+    </div>
+
+    <!-- PATIENT ARRIVAL / BOARDING BANNER (Appears when moving ambulance reaches en-route OP patient) -->
+    <div id="patient-arrived-banner" class="hidden absolute top-4 left-1/2 -translate-x-1/2 z-30 w-11/12 max-w-lg bg-amber-950/95 border-2 border-amber-400 text-white p-3.5 rounded-2xl shadow-2xl backdrop-blur-lg flex items-center justify-between gap-3 animate-pulse">
+      <div class="flex items-center gap-3 min-w-0">
+        <div class="w-10 h-10 rounded-full bg-amber-500 text-black flex items-center justify-center flex-shrink-0 text-xl font-black">
+          🩺
+        </div>
+        <div class="min-w-0">
+          <p class="text-xs font-black tracking-wider text-amber-300 uppercase">Reached En-Route OP Patient</p>
+          <p id="patient-arrived-name" class="text-sm font-bold text-white truncate">Boarding Patient...</p>
+        </div>
+      </div>
+      <button id="btn-banner-board-patient" class="flex-shrink-0 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black uppercase tracking-wider transition shadow-lg">
+        Board Patient
+      </button>
+    </div>
+
+    <!-- FLOATING ROUTE LOADING OVERLAY -->
+    <div id="route-loading-overlay" class="hidden absolute inset-0 z-20 bg-black/60 backdrop-blur-sm flex items-center justify-center">
+      <div class="bg-slate-900/95 border border-slate-700 p-6 rounded-2xl shadow-2xl flex flex-col items-center gap-3">
+        <div class="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+        <p id="route-loading-message" class="text-sm font-bold text-emerald-400">Computing Lowest-Congestion Route...</p>
+      </div>
+    </div>
+
+    <!-- LEFT DRIVER HUD FLOATING DRAWER (Adjustable & Clear) -->
+    <div id="left-hud-drawer" class="absolute top-4 left-4 bottom-16 z-20 w-80 sm:w-96 flex flex-col gap-2 pointer-events-none transition-all duration-300">
+      
+      <!-- HUD HEADER TOOLBAR: Title, Clear Route & Minimize/Maximize -->
+      <div class="hud-glass rounded-2xl px-3.5 py-2 shadow-2xl pointer-events-auto border border-slate-700/80 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <div class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></div>
+          <span class="text-xs font-black tracking-wider text-white uppercase">DRIVER HUD</span>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <!-- Clear / Reset Route Button -->
+          <button id="btn-clear-route" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-red-950/80 text-slate-300 hover:text-red-400 border border-slate-700 hover:border-red-700 transition flex items-center gap-1 text-[11px] font-bold shadow-sm" title="Clear current navigation route">
+            <svg class="w-3.5 h-3.5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+            <span>Clear Route</span>
+          </button>
+          <!-- Minimize / Expand Drawer Button -->
+          <button id="btn-toggle-hud-collapse" class="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white border border-slate-700 transition" title="Toggle HUD Panel">
+            <svg id="hud-collapse-icon" class="w-4 h-4 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- COLLAPSIBLE HUD BODY CONTAINER -->
+      <div id="hud-drawer-body" class="flex flex-col gap-2 flex-grow overflow-hidden transition-all duration-300 pointer-events-auto">
+        
+        <!-- 1. NEXT TURN MANEUVER CARD (Critical Driver Visibility) -->
+        <div class="hud-glass rounded-2xl p-3 shadow-2xl border border-slate-700/80 flex-shrink-0">
+          <div class="flex items-center gap-3">
+            <div id="hud-maneuver-icon" class="w-10 h-10 rounded-xl bg-slate-900 border border-slate-700 flex items-center justify-center flex-shrink-0">
+              <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 10l7-7m0 0l7 7m-7-7v18"/></svg>
+            </div>
+            <div class="flex-grow min-w-0">
+              <div class="flex items-baseline justify-between">
+                <p id="hud-maneuver-dist" class="text-lg font-black font-mono tracking-tight text-white">IN 250 M</p>
+                <span id="hud-eta" class="text-xs font-black font-mono text-emerald-400 bg-emerald-950/70 border border-emerald-800 px-2 py-0.5 rounded">6 MIN</span>
+              </div>
+              <p id="hud-maneuver-text" class="text-xs font-semibold text-slate-300 truncate">Continue straight on Main Arterial</p>
+              <p id="hud-maneuver-road" class="text-[10px] font-mono text-emerald-400 truncate">Bannerghatta Emergency Corridor</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. ROUTE & HOSPITAL TABS -->
+        <div class="hud-glass rounded-2xl p-3 shadow-2xl flex-grow flex flex-col min-h-0 border border-slate-700/80 overflow-hidden">
+          
+          <!-- Tab Navigation Switcher -->
+          <div class="flex items-center gap-1 p-1 bg-slate-900/90 rounded-xl border border-slate-800 mb-2 flex-shrink-0">
+            <button id="tab-btn-nav" class="flex-1 py-1 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 bg-emerald-600 text-white shadow">
+              <span>🧭 Route & Turns</span>
+            </button>
+            <button id="tab-btn-hospitals" class="flex-1 py-1 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 bg-slate-800 text-slate-400 hover:text-white">
+              <span>🏥 Hospitals</span>
+              <span id="tab-hosp-badge" class="text-[9px] px-1.5 py-0.2 rounded bg-slate-700 text-slate-300 font-mono">Nearby</span>
+            </button>
+          </div>
+
+          <!-- TAB 1: NAVIGATION & METRICS PANE -->
+          <div id="tab-pane-nav" class="flex flex-col gap-2 overflow-hidden flex-grow">
+            <!-- Trip Metrics Row -->
+            <div class="grid grid-cols-3 gap-1.5 text-center pb-1.5 border-b border-slate-800/80 flex-shrink-0">
+              <div class="bg-slate-900/60 p-1 rounded-xl border border-slate-800">
+                <p class="text-[9px] font-bold text-slate-400 uppercase">DISTANCE</p>
+                <p id="hud-distance" class="text-sm font-black font-mono text-cyan-400">4.2 KM</p>
+              </div>
+              <div class="bg-slate-900/60 p-1 rounded-xl border border-slate-800">
+                <p class="text-[9px] font-bold text-slate-400 uppercase">AVG SPEED</p>
+                <p id="hud-avg-speed" class="text-sm font-black font-mono text-slate-200">55 km/h</p>
+              </div>
+              <div class="bg-slate-900/60 p-1 rounded-xl border border-slate-800">
+                <p class="text-[9px] font-bold text-slate-400 uppercase">STATUS</p>
+                <p id="hud-traffic-summary" class="text-[11px] font-bold text-emerald-400 truncate mt-0.5">Clear Flow</p>
+              </div>
+            </div>
+
+            <!-- Route Mode Switcher (Fastest vs Shortest) -->
+            <div class="flex items-center gap-1.5 flex-shrink-0">
+              <button id="btn-route-fastest" class="flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 bg-emerald-600 text-white shadow-md">
+                <span>⚡ Fastest</span>
+              </button>
+              <button id="btn-route-shortest" class="flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 bg-slate-800 text-slate-400 hover:text-white">
+                <span>📏 Shortest</span>
+              </button>
+            </div>
+
+            <!-- Time Saved Badge -->
+            <div id="hud-time-saved-badge" class="py-1 px-2 rounded-lg bg-emerald-950/80 border border-emerald-700/60 text-emerald-300 text-[10px] font-mono font-bold text-center flex-shrink-0">
+              ⚡ SAVES 3.8 MIN VS SHORTEST (AVOIDS DOWNTOWN GRIDLOCK)
+            </div>
+
+            <!-- 🚨 PROMINENT EMERGENCY REROUTE BUTTON -->
+            <button id="btn-emergency-reroute" class="btn-emergency-reroute w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-black text-xs tracking-wider uppercase shadow-xl flex items-center justify-center gap-2 border border-red-400/40 cursor-pointer flex-shrink-0">
+              <svg class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+              <span>EMERGENCY: REROUTE NOW</span>
+            </button>
+
+            <!-- Turn-by-Turn List Header -->
+            <div class="flex items-center justify-between pt-1 border-t border-slate-800 flex-shrink-0">
+              <span class="text-[10px] font-black text-slate-400 uppercase tracking-wider">Turn Directions</span>
+            </div>
+            <!-- Scrollable Maneuvers -->
+            <div id="turn-by-turn-list" class="flex-grow overflow-y-auto space-y-1 pr-1 max-h-44 sm:max-h-56">
+              <!-- Populated by JavaScript -->
+            </div>
+          </div>
+
+          <!-- TAB 2: HOSPITALS & ADMISSION PANE -->
+          <div id="tab-pane-hospitals" class="hidden flex-col gap-2 overflow-y-auto flex-grow pr-1">
+            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Select Medical Destination</span>
+            <select id="hospital-select" class="w-full bg-slate-900 border border-slate-700 text-slate-200 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none focus:border-emerald-500 flex-shrink-0">
+              <option value="">Loading Hospitals...</option>
+            </select>
+
+            <!-- In-Ambulance Hospital Admission Registration Card -->
+            <div id="hospital-admission-card" class="hidden p-2.5 rounded-xl bg-teal-950/40 border border-teal-600/60 flex flex-col gap-1.5">
+              <div class="flex items-center justify-between">
+                <span class="text-[11px] font-bold text-teal-300 uppercase flex items-center gap-1.5">
+                  <span>🏥</span>
+                  <span>Hospital Pre-Admission</span>
+                </span>
+                <span id="admission-status-badge" class="text-[9px] font-mono px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 font-bold uppercase">
+                  Alert Sent
+                </span>
+              </div>
+              <div id="hospital-admission-content" class="text-xs space-y-1.5">
+                <!-- Populated via JS -->
+              </div>
+            </div>
+
+            <!-- Quick Local Hospital Cards Container -->
+            <div id="quick-hospital-cards" class="flex flex-col gap-1.5 mt-1">
+              <!-- Injected by JavaScript -->
+            </div>
+
+            <!-- Map Target Tip -->
+            <div class="p-2 rounded-lg bg-slate-900/60 border border-slate-800/80 mt-auto text-[11px] text-slate-400 flex items-center gap-1.5">
+              <span class="text-amber-400 text-sm">💡</span>
+              <span id="map-click-hint">Tip: Tap <b>any hospital</b> or map point to route.</span>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+
+    </div>
+
+    <!-- BOTTOM FLOATING ACTION BAR -->
+    <div class="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 sm:gap-3 bg-slate-900/90 border border-slate-700 p-2 rounded-2xl shadow-2xl backdrop-blur-md">
+      <!-- Start Realistic Drive Simulation -->
+      <button id="btn-toggle-sim" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition flex items-center gap-2 text-xs font-bold border border-slate-700 shadow-md">
+        <svg class="w-4 h-4 text-emerald-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"></path></svg>
+        <span>Simulate Drive</span>
+      </button>
+
+      <!-- Real GPS Browser Geolocation Toggle -->
+      <button id="btn-toggle-gps" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition flex items-center gap-2 text-xs font-bold border border-slate-700 shadow-md" title="Toggle Live GPS Tracking">
+        <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+        <span id="btn-gps-text">Live GPS</span>
+      </button>
+
+      <!-- Register Patient (OP/IP) for Hospital Admission while Travelling in Ambulance -->
+      <button id="btn-toggle-pickup-mode" class="px-3.5 py-2 rounded-xl bg-gradient-to-r from-teal-600 via-emerald-600 to-cyan-600 hover:from-teal-500 hover:to-emerald-500 text-white transition flex items-center gap-1.5 text-xs font-black border border-teal-400/80 shadow-xl" title="Register Patient (OP/IP) for Admission at Destination Hospital">
+        <span class="text-sm">📋</span>
+        <span id="pickup-mode-btn-text">Hospital Pre-Admission</span>
+        <span id="op-moving-pulse" class="hidden w-2 h-2 rounded-full bg-emerald-300 animate-ping"></span>
+      </button>
+
+      <!-- Recenter Ambulance -->
+      <button id="btn-recenter" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition flex items-center gap-1.5 text-xs font-bold border border-slate-700 shadow-md" title="Recenter Map on Ambulance">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+        <span class="hidden sm:inline">Recenter</span>
+      </button>
+
+      <!-- Toggle Map Day / Night View -->
+      <button id="btn-toggle-theme" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition flex items-center gap-1.5 text-xs font-bold border border-slate-700 shadow-md" title="Toggle Day / Night Map Theme">
+        <span id="theme-icon">🌙</span>
+        <span class="hidden sm:inline" id="theme-label">Night</span>
+      </button>
+    </div>
+
+    <!-- HOSPITAL ADMISSION PRE-REGISTRATION MODAL -->
+    <div id="patient-modal" class="hidden absolute inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-4 pointer-events-auto overflow-y-auto">
+      <div class="hud-glass rounded-2xl border border-teal-500/80 p-5 w-full max-w-lg shadow-2xl flex flex-col gap-4 my-auto">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-teal-950/80 border border-teal-600/80 flex items-center justify-center text-xl">
+              🏥
+            </div>
+            <div>
+              <h3 class="text-sm font-black text-white uppercase tracking-wider">Hospital Patient Admission & Pre-Registration</h3>
+              <p class="text-[11px] text-teal-400 font-semibold" id="admission-target-hospital-sub">Travelling in Ambulance Unit AMB-042</p>
+            </div>
+          </div>
+          <button id="patient-modal-close" class="text-slate-400 hover:text-white p-1 rounded-lg text-sm">✕</button>
+        </div>
+
+        <!-- Target Destination Hospital Card -->
+        <div class="p-2.5 rounded-xl bg-slate-900/90 border border-teal-600/50 flex items-center justify-between">
+          <div>
+            <span class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Target Admitting Hospital:</span>
+            <p id="admission-modal-hospital-name" class="text-xs font-black text-emerald-400 truncate max-w-xs">Apollo Emergency & Trauma Center</p>
+          </div>
+          <span class="text-[10px] px-2 py-0.5 rounded font-mono font-bold bg-teal-950 text-teal-300 border border-teal-800 flex-shrink-0">
+            Direct ER Link
+          </span>
+        </div>
+
+        <div class="space-y-3 text-xs max-h-[60vh] overflow-y-auto pr-1">
+          <!-- Row 1: Patient Name & Age/Gender -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div class="sm:col-span-2">
+              <label class="block text-[11px] text-slate-300 font-bold mb-1">Patient Full Name</label>
+              <input id="patient-input-name" type="text" placeholder="e.g. Ramesh Kumar" value="Ramesh Kumar" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-teal-500 font-medium" />
+            </div>
+            <div>
+              <label class="block text-[11px] text-slate-300 font-bold mb-1">Age / Gender</label>
+              <div class="flex gap-1">
+                <input id="patient-input-age" type="number" placeholder="42" value="42" class="w-14 bg-slate-900 border border-slate-700 rounded-xl px-2 py-2 text-white text-xs focus:outline-none focus:border-teal-500 text-center font-medium" />
+                <select id="patient-input-gender" class="flex-grow bg-slate-900 border border-slate-700 rounded-xl px-2 py-2 text-white text-xs focus:outline-none focus:border-teal-500 font-medium">
+                  <option value="Male" selected>Male</option>
+                  <option value="Female">Female</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Row 2: Admission Category & Triage -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div>
+              <label class="block text-[11px] text-slate-300 font-bold mb-1">Admission Type</label>
+              <select id="patient-input-admission-type" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-teal-500 font-medium">
+                <option value="EMERGENCY_IP (ICU / In-Patient Bed)" selected>🏥 Emergency IP (ICU / In-Patient Bed)</option>
+                <option value="OUTPATIENT_OP (Emergency Triage / Day Care)">🩺 Out-Patient OP (Emergency Triage)</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[11px] text-slate-300 font-bold mb-1">Triage Urgency</label>
+              <select id="patient-input-triage" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-teal-500 font-medium">
+                <option value="CODE RED (Critical)" selected>🔴 CODE RED (Critical - Trauma Bay)</option>
+                <option value="CODE YELLOW (Serious)">🟡 CODE YELLOW (Serious - Stretcher Required)</option>
+                <option value="CODE GREEN (Stable)">🟢 CODE GREEN (Stable - Ambulatory Care)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Row 3: Live Vitals inside Ambulance -->
+          <div class="p-2.5 rounded-xl bg-slate-900/90 border border-slate-800">
+            <span class="block text-[10px] text-teal-400 uppercase font-black tracking-wider mb-2">⚡ Live Vitals Recorded in Ambulance:</span>
+            <div class="grid grid-cols-4 gap-2 text-center">
+              <div>
+                <label class="block text-[9px] text-slate-400 font-bold">BP (mmHg)</label>
+                <input id="patient-vital-bp" type="text" value="130/85" class="w-full bg-slate-800 border border-slate-700 rounded-lg py-1 px-1 text-center font-mono text-emerald-400 text-xs font-bold" />
+              </div>
+              <div>
+                <label class="block text-[9px] text-slate-400 font-bold">PULSE (bpm)</label>
+                <input id="patient-vital-pulse" type="number" value="94" class="w-full bg-slate-800 border border-slate-700 rounded-lg py-1 px-1 text-center font-mono text-cyan-400 text-xs font-bold" />
+              </div>
+              <div>
+                <label class="block text-[9px] text-slate-400 font-bold">SpO2 (%)</label>
+                <input id="patient-vital-spo2" type="number" value="96" class="w-full bg-slate-800 border border-slate-700 rounded-lg py-1 px-1 text-center font-mono text-teal-300 text-xs font-bold" />
+              </div>
+              <div>
+                <label class="block text-[9px] text-slate-400 font-bold">TEMP (°F)</label>
+                <input id="patient-vital-temp" type="text" value="98.6" class="w-full bg-slate-800 border border-slate-700 rounded-lg py-1 px-1 text-center font-mono text-amber-300 text-xs font-bold" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Row 4: Chief Medical Complaint & Notes -->
+          <div>
+            <label class="block text-[11px] text-slate-300 font-bold mb-1">Chief Complaints / Medical Diagnosis</label>
+            <input id="patient-input-notes" type="text" placeholder="e.g. Acute chest pain, ST-elevation on ECG, IV fluids initiated" value="Acute chest pain radiating to left arm, shortness of breath" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-teal-500 font-medium" />
+          </div>
+
+          <!-- Row 5: Phone & Action -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div>
+              <label class="block text-[11px] text-slate-300 font-bold mb-1">Attendant / Contact Phone</label>
+              <input id="patient-input-phone" type="tel" value="+91-9848012345" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-teal-500 font-mono" />
+            </div>
+            <div>
+              <label class="block text-[11px] text-slate-300 font-bold mb-1">Trauma Bay / Bed Action</label>
+              <div class="p-2 rounded-xl bg-teal-950/60 border border-teal-800/60 flex items-center justify-between text-xs font-bold text-teal-300">
+                <span>Reserve ER Bay</span>
+                <span class="text-[10px] px-1.5 py-0.5 rounded bg-teal-900 text-teal-200">Auto-Reserved</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2 pt-2 border-t border-slate-800">
+          <button id="patient-modal-cancel" class="flex-1 py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition">
+            Cancel
+          </button>
+          <button id="patient-modal-confirm" class="flex-1 py-2 px-3 rounded-xl bg-gradient-to-r from-teal-600 via-emerald-600 to-cyan-600 hover:from-teal-500 hover:to-emerald-500 text-white text-xs font-bold transition shadow-lg flex items-center justify-center gap-1.5">
+            <span>Register & Alert Hospital</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Application Logic Scripts (Strictly Cache-Busted) -->
+  <script src="js/config.js?v=4.9"></script>
+  <script src="js/audio.js?v=4.9"></script>
+  <script src="js/routing.js?v=4.9"></script>
+  <script src="js/telemetry.js?v=4.9"></script>
+  <script src="js/app.js?v=4.9"></script>
+</body>
+</html>
